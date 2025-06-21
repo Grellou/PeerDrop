@@ -26,6 +26,8 @@ def create_app():
 
     # Blueprints
     from app.controllers.auth import bp as AuthenticationBlueprint
+    from app.controllers.files_route import bp as FilesBlueprint
     api.register_blueprint(AuthenticationBlueprint)
+    api.register_blueprint(FilesBlueprint)
 
     return app
