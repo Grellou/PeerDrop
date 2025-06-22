@@ -51,6 +51,6 @@ class Login(MethodView):
         if not user.check_password(user_data["password"]):
             abort(401, message="Invalid credentials.")
 
-        access_token = create_access_token(identity=user.id)
+        access_token = create_access_token(identity=str(user.id))
         return {"access_token": access_token}
 
