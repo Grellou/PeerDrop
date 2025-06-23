@@ -3,8 +3,9 @@ from flask import request, current_app, send_from_directory
 from flask_smorest import Blueprint, abort
 from flask.views import MethodView
 from flask_jwt_extended import jwt_required, get_jwt_identity
-from app.models.file_model import FileModel
-from app.schemas.file_schema import FileSchema
+from app.models.file_model import FileModel, SharedFileModel
+from app.models.user_model import UserModel
+from app.schemas.file_schema import FileSchema, SharedFileSchema
 from app.utils.file_utils import hash_file, permission_to_download_file
 from app import db
 from sqlalchemy.exc import SQLAlchemyError
@@ -21,7 +22,7 @@ class FileUpload(MethodView):
         # Check for uploaded file
         uploaded_file = request.files.get("file")
         if not uploaded_file or not uploaded_file.filename:
-            abort(400, message="File not found.")
+            abort(404, message="File not found.")
         
         # Save file
         upload_folder = current_app.config["UPLOAD_FOLDER"]
@@ -89,6 +90,7 @@ class FileId(MethodView):
 
 @bp.route("/files")
 class FileList(MethodView):
+    # List user's files
     @bp.response(200, FileSchema(many=True))
     @bp.doc(description="List of user's owned files.")
     @jwt_required()
@@ -98,3 +100,44 @@ class FileList(MethodView):
         if not files_owned:
             return [], 200
         return files_owned
+
+@bp.route("/files/share")
+class FileShare(MethodView):
+    # Share file with user
+    @bp.arguments(SharedFileSchema)
+    @bp.response(200, SharedFileSchema)
+    @bp.doc(description="Share file with other user.")
+    @jwt_required()
+    def post(self, file_data):
+        
+        file_id = file_data["file_id"]
+        shared_with_user_id = file_data["shared_with_user_id"]
+        access_level = file_data["access_level"]
+
+        # Check if file exists
+        file = FileModel.query.get_or_404(file_id)
+
+        # Permissions
+        current_user_id = int(get_jwt_identity())
+        if current_user_id != file.owner_id and current_user_id != 1:
+            abort(403, message="Insufficient permissions.")
+
+        # Check if target user exists
+        target_user = UserModel.query.get_or_404(shared_with_user_id) # noqa
+
+        # Prevent duplicate shares
+        existing_share = SharedFileModel.query.filter_by(file_id=file_id, shared_with_user_id=shared_with_user_id).first()
+        if existing_share:
+            abort(409, message="File already shared with this user.")
+
+        # Add to database
+        shared_file = SharedFileModel(file_id=file_id, shared_with_user_id=shared_with_user_id, access_level=access_level) # type: ignore
+        try:
+            db.session.add(shared_file)
+            db.session.commit()
+        except SQLAlchemyError as error:
+            db.session.rollback()
+            abort(500, message=f"Adding file data to database failed due to error: {str(error)}")
+
+        return shared_file
+

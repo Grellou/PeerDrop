@@ -23,7 +23,7 @@ class Register(MethodView):
             abort(409, message="User with such username or email address already exists.")
 
         # Create account
-        user = UserModel(username=user_data["username"], email_address=user_data["email_address"]) #type: ignore
+        user = UserModel(username=user_data["username"], email_address=user_data["email_address"]) # type: ignore
         user.set_password(user_data["password"])
 
         try:

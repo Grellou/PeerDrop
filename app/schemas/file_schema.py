@@ -1,4 +1,4 @@
-from marshmallow import Schema, fields
+from marshmallow import Schema, fields, validate
 
 class FileSchema(Schema):
     id = fields.Int(dump_only=True)
@@ -12,5 +12,4 @@ class SharedFileSchema(Schema):
     id = fields.Int(dump_only=True)
     file_id = fields.Int(required=True)
     shared_with_user_id = fields.Int(required=True)
-    access_level = fields.Str(required=True)
-    
+    access_level = fields.Str(required=True, validate=validate.OneOf(["read", "write"]))
