@@ -6,4 +6,5 @@ __pycache__
 *.db
 database/
 .env
-uploads/
+migrations/
+uploads/*

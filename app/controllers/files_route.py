@@ -1,11 +1,11 @@
 import os
-from flask import request, current_app
+from flask import request, current_app, send_from_directory
 from flask_smorest import Blueprint, abort
 from flask.views import MethodView
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from app.models.file_model import FileModel
 from app.schemas.file_schema import FileSchema
-from app.utils.file_utils import hash_file
+from app.utils.file_utils import hash_file, permission_to_download_file
 from app import db
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -48,3 +48,21 @@ class FileUpload(MethodView):
             abort(500, message=f"Adding file data to database failed due to error: {str(error)}")
         
         return file_data
+
+@bp.route("/files/<int:file_id>")
+class FileDownload(MethodView):
+    # Download file
+    @jwt_required()
+    def get(self, file_id):
+
+        # Collect file data and user data
+        file_data = FileModel.query.get_or_404(file_id)
+        user_id = int(get_jwt_identity())
+
+        # Permisions
+        if not permission_to_download_file(file_data, user_id):
+            abort(403, message="You don't have permissions to access this file.")
+        
+        # Download
+        upload_folder = current_app.config["UPLOAD_FOLDER"]
+        return send_from_directory(upload_folder, file_data.file_name, as_attachment=True)
