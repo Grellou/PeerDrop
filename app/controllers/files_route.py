@@ -50,7 +50,7 @@ class FileUpload(MethodView):
         return file_data
 
 @bp.route("/files/<int:file_id>")
-class FileDownload(MethodView):
+class FileId(MethodView):
     # Download file
     @jwt_required()
     def get(self, file_id):
@@ -66,3 +66,35 @@ class FileDownload(MethodView):
         # Download
         upload_folder = current_app.config["UPLOAD_FOLDER"]
         return send_from_directory(upload_folder, file_data.file_name, as_attachment=True)
+    
+    # Delete file
+    @jwt_required()
+    def delete(self, file_id):
+        
+        # Get file and current user's ID
+        file_data = FileModel.query.get_or_404(file_id)
+        user_id = int(get_jwt_identity())
+        
+        # Check permissions for file deletion
+        if user_id != file_data.owner_id and user_id != 1:
+            abort(403, message="Insufficient permissions.")
+
+        try:
+            db.session.delete(file_data)
+            db.session.commit()
+        except SQLAlchemyError as error:
+            db.session.rollback()
+            abort(500, message=f"Deleting file data from database failed due to error: {str(error)}")
+        return "", 204 # no content
+
+@bp.route("/files")
+class FileList(MethodView):
+    @bp.response(200, FileSchema(many=True))
+    @bp.doc(description="List of user's owned files.")
+    @jwt_required()
+    def get(self):
+        user_id = int(get_jwt_identity())
+        files_owned = FileModel.query.filter_by(owner_id=user_id).all()
+        if not files_owned:
+            return [], 200
+        return files_owned
