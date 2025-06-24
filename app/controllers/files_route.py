@@ -1,14 +1,18 @@
+from io import BytesIO
 import os
-from flask import request, current_app, send_from_directory
+from flask import request, current_app, send_file, send_from_directory
 from flask_smorest import Blueprint, abort
 from flask.views import MethodView
 from flask_jwt_extended import jwt_required, get_jwt_identity
+import requests
 from app.models.file_model import FileModel, SharedFileModel
 from app.models.user_model import UserModel
 from app.schemas.file_schema import FileSchema, SharedFileSchema
 from app.utils.file_utils import hash_file, permission_to_download_file
 from app import db
 from sqlalchemy.exc import SQLAlchemyError
+
+from app.utils.storage_utils import save_file
 
 bp = Blueprint("files", __name__)
 
@@ -28,7 +32,12 @@ class FileUpload(MethodView):
         upload_folder = current_app.config["UPLOAD_FOLDER"]
         os.makedirs(upload_folder, exist_ok=True) # create dir, no error if dir already exists
         file_path = os.path.join(upload_folder, uploaded_file.filename)
-        uploaded_file.save(file_path)
+        save_file(uploaded_file, file_path)
+        
+        # Upload to IPFS
+        with open(file_path, "rb") as file: # "rb" = read binary
+            response = requests.post("http://127.0.0.1:5001/api/v0/add", files={"file": file})
+        ipfs_hash = response.json()["Hash"] # get hash
         
         # Hash file & file owner
         file_hash = hash_file(file_path)
@@ -40,7 +49,7 @@ class FileUpload(MethodView):
             abort(400, message="File with this content already exists.")
 
         # Store metadata in db
-        file_data = FileModel(file_name=uploaded_file.filename, file_hash=file_hash, owner_id=owner_id, is_public=True) # type: ignore
+        file_data = FileModel(file_name=uploaded_file.filename, file_hash=file_hash, ipfs_hash=ipfs_hash, owner_id=owner_id, is_public=True) # type: ignore
         try:
             db.session.add(file_data)
             db.session.commit()
@@ -64,9 +73,17 @@ class FileId(MethodView):
         if not permission_to_download_file(file_data, user_id):
             abort(403, message="You don't have permissions to access this file.")
         
-        # Download
-        upload_folder = current_app.config["UPLOAD_FOLDER"]
-        return send_from_directory(upload_folder, file_data.file_name, as_attachment=True)
+        # Fetch from IPFS
+        if file_data.ipfs_hash:
+            print("Fetching from IPFS")
+            params = {"arg": file_data.ipfs_hash}
+            response = requests.post("http://127.0.0.1:5001/api/v0/cat", params=params)
+            return send_file(BytesIO(response.content), download_name=file_data.file_name, as_attachment=True)
+        # Fallback to local file
+        else:
+            print("Downloading locally")
+            upload_folder = current_app.config["UPLOAD_FOLDER"]
+            return send_from_directory(upload_folder, file_data.file_name, as_attachment=True)
     
     # Delete file
     @jwt_required()

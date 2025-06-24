@@ -4,6 +4,7 @@ class FileModel(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     file_name = db.Column(db.String(40), nullable=False)
     file_hash = db.Column(db.String(64), nullable=False, unique=True)
+    ipfs_hash = db.Column(db.String(64), nullable=True, unique=True)
     owner_id = db.Column(db.Integer, db.ForeignKey("user_model.id"), nullable=False) # file ownership by user id
     is_public = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, server_default=db.func.now())
