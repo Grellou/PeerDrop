@@ -38,6 +38,8 @@ class FileUpload(MethodView):
         with open(file_path, "rb") as file: # "rb" = read binary
             response = requests.post("http://127.0.0.1:5001/api/v0/add", files={"file": file})
         ipfs_hash = response.json()["Hash"] # get hash
+        requests.post("http://127.0.0.1:5001/api/v0/pin/add", params={"arg": ipfs_hash}) # pin uploaded file
+        requests.post("http://127.0.0.1:5001/api/v0/files/cp", params=[("arg", f"/ipfs/{ipfs_hash}"), ("arg", f"/{uploaded_file.filename}")])
         
         # Hash file & file owner
         file_hash = hash_file(file_path)
@@ -78,6 +80,9 @@ class FileId(MethodView):
             print("Fetching from IPFS")
             params = {"arg": file_data.ipfs_hash}
             response = requests.post("http://127.0.0.1:5001/api/v0/cat", params=params)
+            # Error handling
+            if response.status_code != 200 or not response.content:
+                abort(404, message="File not found.")
             return send_file(BytesIO(response.content), download_name=file_data.file_name, as_attachment=True)
         # Fallback to local file
         else:
@@ -98,6 +103,7 @@ class FileId(MethodView):
             abort(403, message="Insufficient permissions.")
 
         try:
+            SharedFileModel.query.filter_by(file_id=file_id).delete()
             db.session.delete(file_data)
             db.session.commit()
         except SQLAlchemyError as error:
