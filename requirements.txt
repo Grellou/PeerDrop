@@ -8,3 +8,4 @@ marshmallow
 flask-smorest
 flask-migrate
 cryptography
+gunicorn
